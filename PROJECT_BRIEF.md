@@ -35,6 +35,8 @@ These matter more than anything else in this brief.
 2. **Claude may write** configuration and scaffolding that teaches nothing: `.gitignore`, the CI workflow file, a Dockerfile skeleton. Explain each line when asked.
 
    **Split agreed 2026-10-11 (this refines rules 1 and 2).** Both write code. Aryan writes the core: the SQL migrations and the wait-days queries, the Orlando ingest script, the inputs, the baseline, training and evaluation, the LLM labeling call and agreement score, and the `/forecast` function. Claude writes: config, CI and Docker files, test setup and boilerplate, the Next.js page, the FastAPI wiring around Aryan's functions, and the second and third city's ingest once Aryan has written the first. Claude walks Aryan through anything Claude wrote.
+
+   **Update 2026-10-18:** the split is a default, not a hard rule. Aryan decides case by case and can ask Claude to write a piece of the core (for example, Claude wrote the small `ingest_runs` table). Claude still explains anything it writes.
 3. **Aryan already knows Next.js,** so normal help on the front end is fine.
 4. **Keep everything simple enough to explain in an interview.** Prefer plain functions over clever abstractions. No framework that Aryan cannot describe in two sentences.
 5. **Check understanding as you go.** After each piece, ask Aryan to explain it back. If Aryan can't, slow down.
@@ -44,32 +46,40 @@ These matter more than anything else in this brief.
 
 ## 4. Data sources
 
-All three were queried on 2026-10-09 with no login.
+**Five cities, decided 2026-10-17:** two in Florida (Orlando, Miami) and three well-known US cities (Chicago, San Francisco, Austin). Version 1 ships with the first three; San Francisco and Austin are added after it is live (see section 9).
 
-| City | System | Records | Endpoint |
-|---|---|---|---|
-| Orlando | Socrata | 1,111,255 in total. Of 120,088 permits issued since 2023, 120,060 have both `processed_date` and `issue_permit_date`. | `https://data.cityoforlando.net/resource/ryhf-m453.json` |
-| City of Miami | ArcGIS | 234,388 issued permits since 2014. All have `PlanCreatedDate` and `IssuedDate`. Only 40,818 have `FirstSubmissionDate`. | `https://services1.arcgis.com/CvuPhqcTQpZPT9qY/arcgis/rest/services/Building_Permits_Since_2014/FeatureServer/0` |
-| Chicago | Socrata | Of 90,534 permits issued since 2024, 90,532 have both `application_start_date` and `issue_date`. Current to 2026-10-08. | `https://data.cityofchicago.org/resource/ydr8-5enu.json` |
+All five were queried live on 2026-10-17 with no login.
 
-The date check was rerun on 2026-10-10. All three cities pass, so none needs swapping.
+| City | System | Records | Latest permit (as of 10/17) | Description text | Endpoint |
+|---|---|---|---|---|---|
+| Orlando | Socrata | Of permits issued since 2023, 120,060 have both `processed_date` and `issue_permit_date`. | **2026-09-23** (about 3.5 weeks behind, though the dataset says it updates daily) | None. `project_name` is a project or subdivision name, not a description. | `https://data.cityoforlando.net/resource/ryhf-m453.json` |
+| City of Miami | ArcGIS | 235,060 records since 2014. All issued ones have `PlanCreatedDate` and `IssuedDate`. `FirstSubmissionDate` is mostly empty. | 2026-10-16 | `WorkItems`, short labels such as "WINDOWS / DOORS / SKYLIGHT", plus `ScopeofWork` | `https://services1.arcgis.com/CvuPhqcTQpZPT9qY/arcgis/rest/services/Building_Permits_Since_2014/FeatureServer/0` |
+| Chicago | Socrata | Of permits issued since 2024, 91,195 have both `application_start_date` and `issue_date`. 58,490 of them are "Express Permit Program". | 2026-10-16 | `work_description`, real free text | `https://data.cityofchicago.org/resource/ydr8-5enu.json` |
+| San Francisco | Socrata | Of permits issued since 2024, 65,744 of 66,196 have both `filed_date` and `issued_date` (checked 10/10). Dates include a time of day. | 2026-10-16 | `description`, real free text | `https://data.sf.gov/resource/i98e-djp9.json` (the old `data.sfgov.org` domain redirects here) |
+| Austin | Socrata | Of permits issued since 2024, 154,640 of 154,640 have both `applieddate` and `issue_date` (checked 10/10). | 2026-10-16 | `description`, real free text | `https://data.austintexas.gov/resource/3syk-w9eu.json` |
 
-**Other large cities with both dates (checked 2026-10-10, for later)**
+**Each city publishes its own wait figure:** Orlando `day_to_issuance`, Miami `DaysInCity` and `TotalDaysInPlanReview`, Chicago `processing_time`. Compute wait days from the two dates, then compare with these as a sanity check.
+
+**Orlando's lag** does not hurt training. It does mean the nightly job and the office-busyness inputs are always about three weeks stale for Orlando. Say so in the README.
+
+**Florida search, 2026-10-17:** the Socrata catalog and an ArcGIS search found no other Florida city with both an application date and an issue date in an open API. Gainesville's dataset stopped in 2023; Tallahassee and Leon County publish active permits only; Fort Lauderdale has no record with both dates; Miami-Dade County has the application date only; Broward has nothing. Orlando and Miami are the only two Florida options.
+
+**Other large cities with both dates (checked 2026-10-10, not planned)**
 
 | City | Socrata dataset | Application and issue fields | Permits issued since 2024 with both |
 |---|---|---|---|
-| Austin | `data.austintexas.gov` `3syk-w9eu` | `applieddate`, `issue_date` | 154,640 of 154,640 |
-| San Francisco | `data.sfgov.org` `i98e-djp9` | `filed_date`, `issued_date` | 65,744 of 66,196 |
 | New Orleans | `data.nola.gov` `rcm3-fn58` | `filingdate`, `issuedate` | 49,816 of 49,824 |
 | Seattle | `data.seattle.gov` `76t5-zqzr` | `applieddate`, `issueddate` | 16,158 of 17,243 |
-| New York City | `data.cityofnewyork.us` `ipu4-2q9a` | `filing_date`, `issuance_date` (stored as text, `MM/DD/YYYY`) | 3,969,934 in total; not counted by year |
+| New York City | `data.cityofnewyork.us` `ipu4-2q9a` | `filing_date`, `issuance_date` (stored as text, `MM/DD/YYYY`) | 3,969,934 in total. No description field, and New York moved to a newer permit system, so this dataset may be partial. Skip. |
 
 Not usable as they stand: Los Angeles (`pi9x-tg5x` has an issue date only; a separate "submitted" dataset, `gwh9-jnip`, might be joined to it but was not checked) and Dallas (issue date only).
 
 **Fields seen**
 - **Orlando:** `permit_number`, `application_type`, `worktype`, `plan_review_type`, `estimated_cost`, `square_footage`, `processed_date`, `prescreen_completed_date`, `pending_issuance_date`, `issue_permit_date`, `final_date`, `application_status`, `of_cycles`, `private_provider`, `project_name`, `neighborhood`.
 - **Miami:** `FirstSubmissionDate`, `PlanCreatedDate`, `PlanAcceptedDate`, `IssuedDate`, `Statusdate`, `ScopeofWork`, `WorkItems`, `TotalCost`, `NewAdditionCost`, `RemodelingCost`, `PropertyType`, `BuildingPermitStatusDescription`.
-- **Chicago:** `permit_type`, `review_type`, `work_type`, `application_start_date`, `issue_date`, `processing_time`, `reported_cost`, `total_fee`.
+- **Chicago:** `permit_type`, `review_type`, `work_type`, `work_description`, `application_start_date`, `issue_date`, `processing_time`, `reported_cost`, `total_fee`.
+- **San Francisco:** `permit_type_definition`, `description`, `estimated_cost`, `filed_date`, `issued_date`.
+- **Austin:** `permittype`, `work_class`, `description`, `applieddate`, `issue_date`.
 
 **How to query**
 - **Socrata:** add `$limit`, `$offset`, `$order` and `$where` to the URL. Page through in chunks; large unfiltered queries time out.
@@ -82,7 +92,7 @@ Not usable as they stand: Los Angeles (`pi9x-tg5x` has an issue date only; a sep
 ## 5. Architecture
 
 ```
-City data portals (Orlando, Miami, Chicago)
+City data portals (Orlando, Miami, Chicago; later San Francisco, Austin)
         |  ingest job, one module per city (scheduled nightly)
         v
    Postgres  <---- LLM labeling step (work description -> category)
@@ -157,7 +167,7 @@ permit-forecaster/
 - **Leaking the answer.** Orlando's `of_cycles` (review rounds) is only known after approval. Never use it as an input. Check every input for this.
 - **Open permits.** Records of issued permits leave out ones still waiting, which makes waits look shorter than they are.
 - **Same-day permits.** Many simple permits are approved instantly. Consider treating them separately.
-- **Date meanings differ by city.** Use `processed_date` as Orlando's application date; it matched `prescreen_completed_date` in every sampled row. Use `PlanCreatedDate` as Miami's, because `FirstSubmissionDate` is empty on about 83% of records. Whether `PlanCreatedDate` is the true filing date is not confirmed; read Miami's data dictionary in week 1.
+- **Date meanings differ by city.** Use `processed_date` as Orlando's application date; it matched `prescreen_completed_date` in every sampled row. Use `PlanCreatedDate` as Miami's, because `FirstSubmissionDate` is empty on about 83% of records. Whether `PlanCreatedDate` is the true filing date is not confirmed; read Miami's data dictionary in week 1. Use `application_start_date` for Chicago, `filed_date` for San Francisco and `applieddate` for Austin. San Francisco's dates include a time of day; round to the date.
 
 ## 8. The LLM step
 
@@ -167,13 +177,13 @@ permit-forecaster/
 4. Train the small text classifier on those labels and apply it to the remaining records. This avoids paying for a million LLM calls.
 5. Train the forecast model with and without the category, and report the difference.
 
-Miami's `ScopeofWork` and `WorkItems` are the confirmed free-text fields. Whether Orlando and Chicago have usable descriptions is not yet checked.
+Confirmed 2026-10-17: Chicago's `work_description`, San Francisco's `description` and Austin's `description` are real free text, so pull the 300 hand-label samples from those cities. Miami's `WorkItems` are short labels that may map to categories without an LLM. Orlando has no description field; it gets the category from `application_type` and `worktype` only.
 
 ## 9. Schedule and tests
 
 About 8 weeks at roughly 15 hours a week. The week estimates are a judgment, not a measured figure.
 
-The dates below assume a start on Thursday 2026-10-15. If work starts earlier or later, shift every week by the same amount. "Aryan" and "Claude" follow the split in section 3.
+The dates below assume a start on Thursday 2026-10-15. Work actually started Saturday 2026-10-17 (repository and first commit). If work starts earlier or later, shift every week by the same amount. "Aryan" and "Claude" follow the split in section 3.
 
 | Week | Dates | Goal | Done when |
 |---|---|---|---|
@@ -182,7 +192,7 @@ The dates below assume a start on Thursday 2026-10-15. If work starts earlier or
 | 3 | Oct 29 to Nov 4 | **Version 1 live** | A stranger can get a forecast from a public link. |
 | 4 | Nov 5 to Nov 11 | Scheduled ingest and a third city | The job has run unattended for five nights. |
 | 5 | Nov 12 to Nov 18 | LLM labeling, measured | There is an agreement number. |
-| 6 | Nov 19 to Nov 25 | Text classifier and final results | The results table is final. |
+| 6 | Nov 19 to Nov 25 | Text classifier, San Francisco and Austin, final results | The results table is final, with five cities. |
 | 7 | Nov 26 to Dec 2 | Reliability and write-up (Thanksgiving week, expect fewer hours) | Someone else can run it from the README. |
 | 8 | Dec 3 to Dec 9 | Buffer and sharing | Unfinished items are cut, not carried over. |
 
@@ -225,9 +235,10 @@ The dates below assume a start on Thursday 2026-10-15. If work starts earlier or
 - Set a spending cap on the API account before running anything.
 
 ### Week 6 (Nov 19 to Nov 25): classifier and results
+- Claude: the San Francisco and Austin ingest scripts, following Aryan's Orlando and Chicago ones. Aryan reviews them.
 - Aryan: have the chosen LLM label a few thousand more descriptions (use the Batch API).
 - Aryan: train the TF-IDF and logistic regression classifier on those labels and score it on the hand-labeled set.
-- Aryan: retrain the forecast model with and without the category and record the difference.
+- Aryan: retrain the forecast model on all five cities, with and without the category, and record the difference.
 - Aryan: break the errors down by city and permit type, and write up where the model is weak.
 
 ### Week 7 (Nov 26 to Dec 2): reliability and write-up
@@ -242,7 +253,7 @@ The dates below assume a start on Thursday 2026-10-15. If work starts earlier or
 - Show the site to a few contractors or homeowners and note what they say.
 - Write one post explaining how the model was built and measured.
 - Add the project to the resume, with measured numbers only.
-- Optional, if time allows: add Austin or San Francisco.
+- If San Francisco or Austin slipped from week 6, finish them here or ship with three cities.
 
 **Tests that decide whether to continue** (proposed thresholds, not published standards)
 1. **End of week 1:** at least two cities have 20,000 or more records with both dates. This already passes for Orlando, Miami and Chicago (rechecked 2026-10-10), so week 1's real job is loading the data and scoring the baseline.
@@ -271,13 +282,13 @@ The dates below assume a start on Thursday 2026-10-15. If work starts earlier or
 
 ## 11. Out of scope
 
-User accounts, payments, a mobile app, more than three cities before v1, Kubernetes, agent frameworks, vector databases. Add nothing from this list without a reason tied to section 2.
+User accounts, payments, a mobile app, more than three cities before v1, more than five cities in total, Kubernetes, agent frameworks, vector databases. Add nothing from this list without a reason tied to section 2.
 
 ## 12. Not yet verified
 
 - Whether Miami's `PlanCreatedDate` is the true filing date.
-- Whether Chicago and Orlando have a usable free-text description field.
 - Terms of use for each data portal. Read them before launch.
+- Whether Orlando's three-week lag is permanent or temporary. Recheck the latest `issue_permit_date` in week 4.
 - Whether anyone wants the tool. No demand evidence was found; Reddit could not be searched.
 - Florida's 2026 permit laws (HB 927 and others) may fix some permit timelines by rule.
 - Hosting free tiers. As of the research: Fly.io has no free tier for new accounts, Railway is a trial only, Neon's free Postgres holds 0.5 GB per project, and Supabase's free tier pauses after a week of inactivity.
