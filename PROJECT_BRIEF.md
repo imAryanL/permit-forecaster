@@ -46,7 +46,7 @@ These matter more than anything else in this brief.
 
 ## 4. Data sources
 
-**Five cities, decided 2026-10-17:** two in Florida (Orlando, Miami) and three well-known US cities (Chicago, San Francisco, Austin). Version 1 ships with the first three; San Francisco and Austin are added after it is live (see section 9).
+**Five cities, decided 2026-10-17:** two in Florida (Orlando, Miami) and three well-known US cities (Chicago, San Francisco, Austin). All five were ingested by 2026-10-27 (664,069 permits since 2023), so version 1 can use all five.
 
 All five were queried live on 2026-10-17 with no login.
 
@@ -60,7 +60,7 @@ All five were queried live on 2026-10-17 with no login.
 
 **Each city publishes its own wait figure:** Orlando `day_to_issuance`, Miami `DaysInCity` and `TotalDaysInPlanReview`, Chicago `processing_time`. Compute wait days from the two dates, then compare with these as a sanity check.
 
-**Orlando's lag** does not hurt training. It does mean the nightly job and the office-busyness inputs are always about three weeks stale for Orlando. Say so in the README.
+**Orlando's lag is gone.** It was about 3.5 weeks behind on 10/17, but the data was current to 10/21 when loaded on 2026-10-21.
 
 **Florida search, 2026-10-17:** the Socrata catalog and an ArcGIS search found no other Florida city with both an application date and an issue date in an open API. Gainesville's dataset stopped in 2023; Tallahassee and Leon County publish active permits only; Fort Lauderdale has no record with both dates; Miami-Dade County has the application date only; Broward has nothing. Orlando and Miami are the only two Florida options.
 
@@ -204,7 +204,7 @@ The dates below assume a start on Thursday 2026-10-15. Work actually started Sat
 - Claude: write the Miami ingest script after Aryan's Orlando one works, and walk Aryan through it.
 - Aryan: write the SQL that computes wait days and counts records with both dates.
 - Aryan: compute the baseline (median wait over the previous 90 days by city and permit type).
-- Read Miami's data dictionary to confirm what `PlanCreatedDate` means.
+- Done 2026-10-30: compared date fields to confirm Miami's `PlanCreatedDate` and Orlando's `processed_date` (see `DECISIONS.md`).
 
 ### Week 2 (Oct 22 to Oct 28): first model
 - Aryan: clean the data (bad dates, negative waits, same-day permits).
@@ -286,9 +286,7 @@ User accounts, payments, a mobile app, more than three cities before v1, more th
 
 ## 12. Not yet verified
 
-- Whether Miami's `PlanCreatedDate` is the true filing date.
 - Terms of use for each data portal. Read them before launch.
-- Whether Orlando's three-week lag is permanent or temporary. Recheck the latest `issue_permit_date` in week 4.
 - Whether anyone wants the tool. No demand evidence was found; Reddit could not be searched.
 - Florida's 2026 permit laws (HB 927 and others) may fix some permit timelines by rule.
 - Hosting free tiers. As of the research: Fly.io has no free tier for new accounts, Railway is a trial only, Neon's free Postgres holds 0.5 GB per project, and Supabase's free tier pauses after a week of inactivity.
