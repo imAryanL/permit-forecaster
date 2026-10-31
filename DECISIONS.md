@@ -140,3 +140,15 @@ Why: Postgres treats them as different text, so a query or the app typing a norm
 
 **2026-10-30: All cleaning happens in a `clean_permits` view, not by deleting rows.**
 Why: the raw `permits` table stays untouched, so any rule can be changed later by editing the view.
+
+## Baseline
+
+**2026-10-31: Split train and test on `issued_date`, not `applied_date`.**
+What I found: the data only has issued permits, so slow permits applied for recently aren't in it yet. In Austin, the 90th percentile wait by applied month falls from 146 days (March 2026) to 12 days (October 2026). By issued month it stays steady, 314 and 291 days.
+Why: splitting on applied date would fill the test months with only the fast permits and make every score look better than it really is.
+Train is everything issued before 2026-08-01 (616,018 permits). Test is everything issued from 2026-08-01 through 2026-10-26 (38,556 permits).
+
+**2026-10-31: The baseline is the median wait over the 90 days before the cutoff, by city and permit type.**
+Why: it's the simple forecast the model has to beat. Without it, a model's score means nothing. It uses 42,926 permits issued from 2026-05-03 through 2026-07-31.
+Score: off by 64.0 days on average. Austin 85.3, Chicago 24.3, Miami 115.5, Orlando 24.0, San Francisco 33.5.
+Known limit: the medians are computed once at the cutoff, not updated through the test months. The model has to be tested the same way so the comparison is fair.
