@@ -152,3 +152,24 @@ Train is everything issued before 2026-08-01 (616,018 permits). Test is everythi
 Why: it's the simple forecast the model has to beat. Without it, a model's score means nothing. It uses 42,926 permits issued from 2026-05-03 through 2026-07-31.
 Score: off by 64.0 days on average. Austin 85.3, Chicago 24.3, Miami 115.5, Orlando 24.0, San Francisco 33.5.
 Known limit: the medians are computed once at the cutoff, not updated through the test months. The model has to be tested the same way so the comparison is fair.
+
+**2026-11-01: Score the baseline at the 50th, 80th and 90th percentiles with coverage and pinball loss.**
+Why: the app shows a typical wait and a slow-case wait, and average error only scores the typical one. Coverage alone can be cheated: forecasting 1,460 days for every permit covers 100% and tells nobody anything. Pinball loss gives that forecast a bad score, so it shows whether a forecast is tight as well as reliable.
+| Percentile | Coverage | Pinball loss |
+|---|---|---|
+| 50th | 51.5% | 31.99 |
+| 80th | 79.5% | 37.02 |
+| 90th | 89.7% | 30.21 |
+
+Coverage by city:
+| City | 50th | 80th | 90th |
+|---|---|---|---|
+| Austin | 52.4% | 80.1% | 91.7% |
+| Chicago | 51.8% | 79.1% | 88.3% |
+| Miami | 49.7% | 80.1% | 89.2% |
+| Orlando | 54.0% | 80.8% | 89.0% |
+| San Francisco | 47.3% | 75.1% | 87.5% |
+
+What it means: coverage is already on target, so the model has to win on pinball loss by giving tighter forecasts with the same coverage. San Francisco runs a little low at every percentile, which is worth watching in the model.
+I wrote the pinball function by hand and checked it: at the 50th percentile it comes out to exactly half the average error (31.99 × 2 = 63.97).
+Known limit: pinball scores only compare at the same percentile. The 90th scoring lower than the 80th doesn't make it better.

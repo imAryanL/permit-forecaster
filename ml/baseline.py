@@ -1,6 +1,6 @@
 # Baseline: the simple forecast the model has to beat.
-# For each city and permit type, it predicts the median wait from recent
-# permits, then scores that against newer permits it never saw.
+# For each city and permit type, it predicts the 50th, 80th and 90th percentile
+# wait from recent permits, then scores those against newer permits it never saw.
 
 import os
 
@@ -11,6 +11,11 @@ from dotenv import load_dotenv
 # read DATABASE_URL from the .env file
 load_dotenv()
 database_url = os.getenv("DATABASE_URL")
+
+def pinball_loss(real, forecast, percentile):
+    too_low = (real - forecast).clip(lower=0)
+    too_high = (forecast - real).clip(lower=0)
+    return (percentile * too_low + (1 - percentile) * too_high).mean()
 
 query = """
     SELECT city, permit_type, issued_date, wait_days
@@ -34,15 +39,17 @@ test = permits[permits["issued_date"] >= cutoff]
 # the baseline only looks at the 90 days before the cutoff
 recent = train[train["issued_date"] >= cutoff - pd.Timedelta(days=90)]
 
-# median wait for each city and permit type
-medians = recent.groupby(["city", "permit_type"])["wait_days"].median()
+# score the baseline at each percentile
+for percentile in [0.5, 0.8, 0.9]:
+    forecasts = recent.groupby(["city", "permit_type"])["wait_days"].quantile(percentile)
 
-# put each permit's forecast next to its real wait
-forecast = medians.rename("forecast").reset_index()
-test = test.merge(forecast, on=["city", "permit_type"], how="left")
+    # put each permit's forecast next to its real wait
+    forecast = forecasts.rename("forecast").reset_index()
+    scored = test.merge(forecast, on=["city", "permit_type"], how="left")
 
-# how many days off each forecast was
-test["error"] = (test["wait_days"] - test["forecast"]).abs()
+    scored["covered"] = scored["wait_days"] <= scored["forecast"]
 
-print(test["error"].mean())
-print(test.groupby("city")["error"].mean())
+    print(percentile)
+    print(scored["covered"].mean())
+    print(scored.groupby("city")["covered"].mean())
+    print(pinball_loss(scored["wait_days"], scored["forecast"], percentile))
