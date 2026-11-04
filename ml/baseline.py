@@ -49,6 +49,11 @@ for percentile in [0.5, 0.8, 0.9]:
 
     scored["covered"] = scored["wait_days"] <= scored["forecast"]
 
+    # grade each city on its own
+    for city in scored["city"].unique():
+        one_city = scored[scored["city"] == city]
+        print(city, pinball_loss(one_city["wait_days"], one_city["forecast"], percentile))
+
     print(percentile)
     print(scored["covered"].mean())
     print(scored.groupby("city")["covered"].mean())

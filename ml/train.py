@@ -51,6 +51,15 @@ for percentile in [0.5, 0.8, 0.9]:
     model.fit(train[features], train["wait_days"])
     predictions = model.predict(test[features])
 
+    # put each permit's guess next to its real wait
+    scored = test.copy()
+    scored["forecast"] = predictions
+
+    # grade each city on its own
+    for city in scored["city"].unique():
+        one_city = scored[scored["city"] == city]
+        print(city, pinball_loss(one_city["wait_days"], one_city["forecast"], percentile))
+
     # share of real waits that came in at or under the guess
     covered = (test["wait_days"] <= predictions).mean()
 
