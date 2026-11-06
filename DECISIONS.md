@@ -173,3 +173,74 @@ Coverage by city:
 What it means: coverage is already on target, so the model has to win on pinball loss by giving tighter forecasts with the same coverage. San Francisco runs a little low at every percentile, which is worth watching in the model.
 I wrote the pinball function by hand and checked it: at the 50th percentile it comes out to exactly half the average error (31.99 × 2 = 63.97).
 Known limit: pinball scores only compare at the same percentile. The 90th scoring lower than the 80th doesn't make it better.
+
+## Model
+
+**2026-11-06: Tried applied month (1 to 12) as a clue. Dropped it.**
+What I found: overall pinball got worse at all 3 percentiles, 31.11 / 36.55 / 29.13 with the month vs 30.56 / 35.10 / 28.54 without it (50th / 80th / 90th). Every city was worse or tied. The biggest drop was Austin at the 80th, 54.30 vs 51.33. Coverage stayed on target (50.4%, 80.4%, 90.8%).
+Why: a clue stays only if the overall score improves and no city gets clearly worse. My guess is that with about 3 years of data, each month shows up only 3 times, so the model learned month patterns that didn't hold for the newer permits.
+Only the month, never the year: the split is on issued date, so the year would teach the model that newer permits are faster, which is a leak.
+
+**2026-11-06: Tried applied weekday (Monday to Sunday) as a clue. Dropped it.**
+What I found: a tie that leans slightly worse. Overall pinball was 30.58 / 35.22 / 28.61 with the weekday vs 30.56 / 35.10 / 28.54 without it. Every city moved by less than 1%, either way. Coverage stayed on target (50.3%, 81.1%, 91.0%).
+Why: it doesn't improve the overall score, so it doesn't earn a place. That's two calendar clues in a row that didn't help, so I'm done with calendar clues.
+
+**2026-11-06: Tried city busyness as a clue. Dropped it.**
+How I measured it: the number of permits the city issued in the 30 days before this permit was applied for. Not the number filed, because my data only has permits that were issued, so a "filed" count would be missing everything still waiting and would depend on the future. Permits applied before 2023-01-31 got a blank, because their 30 days start before my data does (8.5% of rows).
+What I found: pinball got a little better overall, 30.50 / 34.64 / 28.47 vs 30.56 / 35.10 / 28.54, but coverage fell well below target: 45.2%, 74.9% and 86.4% instead of about 50%, 80% and 90%. So the forecasts came out too low, and the slow-case number would be wrong more often than it promises. SF and Austin got better (SF 80th 19.76 vs 21.04), but Miami was worse at all 3 percentiles, Orlando worse at the 80th and 90th (12.22 vs 11.92), and Chicago worse at the 90th (10.30 vs 9.94).
+Why: it breaks the keep rule (cities got worse) and it breaks coverage. My guess is that busyness changes over time, so the model used it as a stand-in for "how recent," and recent permits in the training data look fast only because the slow ones weren't issued yet. That's the same newer-means-faster trap as applied year, through a back door.
+Lesson: check coverage, not only pinball. A better pinball with broken coverage is not a better forecast.
+That's three clues in a row that didn't help (month, weekday, busyness). The model stays at city, permit type and cost.
+
+**2026-11-06: Tried work category as a clue. KEPT it.**
+What it is: the kind of work, picked on the application. Chicago: review track (express, standard plan review, self cert). Austin and Orlando: kind of work (new, repair, remodel, roof). Miami: commercial or residential. San Francisco: the building's existing use. It's filled in for 99.7% of permits. Same cleaning as permit types: any category with fewer than 50 permits in its city becomes OTHER, which leaves 100 categories.
+What I found: the biggest gain yet, and coverage stayed on target (49.8%, 80.2%, 90.9%).
+| Percentile | Without | With work category | Better by |
+|---|---|---|---|
+| 50th | 30.56 | 27.52 | 10% |
+| 80th | 35.10 | 29.95 | 15% |
+| 90th | 28.54 | 23.89 | 16% |
+Against the baseline (31.99 / 37.02 / 30.21) the model is now 14%, 19% and 21% better.
+By city: Austin got much better (42.15 to 34.54 at the 50th, 42.59 to 30.69 at the 90th, up to 28% better). Orlando got 8 to 10% better and Chicago 6 to 7% better. Miami and San Francisco tied (every change under 2%).
+Why it works: unlike the calendar clues, it describes the permit itself, how big the job is and which review lane it goes through. Austin gains the most because only 10% of Austin permits have a cost, so before this the model knew almost nothing about the size of an Austin job.
+The model is now city, permit type, work category and cost.
+
+**2026-11-06: Tried description word count as a clue. KEPT it.**
+What it is: the number of words in the job description. Orlando has no descriptions, and empty ones count as blank, not 0.
+What I found: better at all 3 percentiles, with coverage on target (49.3%, 80.5%, 90.9%).
+| Percentile | Without | With word count | Better by |
+|---|---|---|---|
+| 50th | 27.52 | 26.68 | 3% |
+| 80th | 29.95 | 28.79 | 4% |
+| 90th | 23.89 | 22.86 | 4% |
+Against the baseline (31.99 / 37.02 / 30.21) the model is now 17%, 22% and 24% better.
+By city: Miami is the big gain (51.46 to 47.41 at the 50th, 40.80 to 36.41 at the 90th, 8 to 11% better). Chicago and Austin got 1 to 2% better. Orlando and San Francisco tied (Orlando has no descriptions, so a tie is expected there).
+Leak check: Miami's description is its scope of work, picked from a list on the application ("FLAT ROOF", "WINDOWS / DOORS / SKYLIGHT", sometimes several joined with |). More words means more pieces of work, and the median wait climbs from about 40 days at 1 to 4 words to about 300 days at 20+. It's known on the day someone applies, so it isn't a leak.
+What it hints at: the words themselves matter, not only how many there are. In Miami, "REPLACE SAME LOCATION CENTRAL AC / HEATING SYSTEM" has a median wait of 0 days and "SEWER CAPPING" has 218. That's the case for the LLM description categories.
+The model is now city, permit type, work category, cost and description word count.
+
+**2026-11-06: Tried common descriptions as a clue. KEPT it, for now.**
+What it is: each city's 60 most common exact descriptions (trimmed, uppercased) become categories, and everything else is OTHER. That makes 240 categories, under the model's 255 limit.
+How much it covers: exact repeats are rare outside Miami because people write the same job many ways ("REROOFING", "RE-ROOFING", "REROOF"). The top 60 cover 58% of Miami permits, 17% of Austin, 13% of San Francisco and 6% of Chicago. Orlando has no descriptions.
+What I found: better at all 3 percentiles, with coverage on target (49.7%, 79.7%, 90.9%).
+| Percentile | Without | With common descriptions | Better by |
+|---|---|---|---|
+| 50th | 26.68 | 26.16 | 2% |
+| 80th | 28.79 | 27.90 | 3% |
+| 90th | 22.86 | 22.02 | 4% |
+Against the baseline (31.99 / 37.02 / 30.21) the model is now 18%, 25% and 27% better.
+By city: Miami again (47.41 to 45.15 at the 50th, 36.41 to 32.63 at the 90th, 5 to 10% better). Chicago and Austin about 1% better. San Francisco and Orlando tied.
+Why "for now": it's a crude version of the LLM step. It only helps where descriptions repeat word for word. The LLM categories should replace it, and they have to beat 26.16 / 27.90 / 22.02 to earn their place.
+Ties at 60th place in Chicago and San Francisco are broken by the order pandas sorts them in, which moved 116 permits and the scores by less than 0.05.
+The model is now city, permit type, work category, cost, description word count and common description.
+
+**2026-11-06: Checked tonight's kept clues on a practice test they were never picked on.**
+Why: I graded 7 versions against the same Aug-Oct test permits tonight. Keeping whatever scores best on one test can tune the model to those exact permits, like checking the answer key after every question. So I made a practice test: train on permits issued before 2026-05-01 (572,422) and grade on May-July 2026 (43,596), then compared the old 3 clues (city, permit type, cost) with the new 6.
+| Percentile | 3 clues | 6 clues | Better by (practice) | Better by (real test) |
+|---|---|---|---|---|
+| 50th | 31.22 | 26.61 | 15% | 14% |
+| 80th | 36.18 | 28.73 | 21% | 21% |
+| 90th | 29.24 | 22.69 | 22% | 23% |
+Every city improved on the practice test too: Austin 20 to 29%, Miami 11 to 18%, Chicago and Orlando 8 to 12%, San Francisco 1 to 4%. Coverage stayed on target (52.0%, 81.1%, 91.3%).
+What it means: the gains hold up on months the decisions never saw, almost to the percent, so they're real and not luck on the test set.
+From now on: new ideas get picked on the practice test, and the real test is only for the final check.
