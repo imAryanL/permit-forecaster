@@ -4,6 +4,7 @@
 
 import os
 
+import joblib
 import pandas as pd
 import psycopg
 from dotenv import load_dotenv
@@ -63,6 +64,8 @@ cutoff = pd.Timestamp("2026-08-01")
 train = permits[permits["issued_date"] < cutoff]
 test = permits[permits["issued_date"] >= cutoff]
 
+os.makedirs("models", exist_ok=True)
+
 # the columns the model learns from, all known on the day someone applies
 features = ["city", "permit_type", "work_category", "cost", "description_words", "common_description"]
 
@@ -70,6 +73,7 @@ features = ["city", "permit_type", "work_category", "cost", "description_words",
 for percentile in [0.5, 0.8, 0.9]:
     model = HistGradientBoostingRegressor(loss="quantile", quantile=percentile, random_state=0)
     model.fit(train[features], train["wait_days"])
+    joblib.dump(model, f"models/model_{int(percentile * 100)}.joblib")
     predictions = model.predict(test[features])
 
     # put each permit's guess next to its real wait
