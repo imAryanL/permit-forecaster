@@ -51,6 +51,27 @@ permits.loc[permits["description_words"] == 0, "description_words"] = None
 # common description: each city's 60 most common descriptions; the rest are OTHER
 permits["common_description"] = permits["description"].str.strip().str.upper()
 top_60 = permits.groupby("city")["common_description"].value_counts().groupby("city").head(60)
+# turning the panda table into a plain python dictionary: one list per city to save and look things up
+top_60_lists = {}
+for city, description in top_60.index:
+    if city not in top_60_lists:
+        top_60_lists[city] = []
+    top_60_lists[city].append(description)
+
+# each city's permit types, saved so /forecast and the dropdowns use the same choices
+permit_type_lists = {}
+for city, permit_type in permits[["city", "permit_type"]].drop_duplicates().values:
+    if city not in permit_type_lists:
+        permit_type_lists[city] = []
+    permit_type_lists[city].append(permit_type)
+
+# each city's work categories, same idea
+work_category_lists = {}
+for city, work_category in permits[["city", "work_category"]].drop_duplicates().values:
+    if city not in work_category_lists:
+        work_category_lists[city] = []
+    work_category_lists[city].append(work_category)
+
 in_top_60 = permits.set_index(["city", "common_description"]).index.isin(top_60.index)
 permits.loc[~in_top_60, "common_description"] = "OTHER"
 
@@ -64,7 +85,13 @@ cutoff = pd.Timestamp("2026-08-01")
 train = permits[permits["issued_date"] < cutoff]
 test = permits[permits["issued_date"] >= cutoff]
 
+# save the lists /forecast needs to build the same clues for a new permit
 os.makedirs("models", exist_ok=True)
+joblib.dump(top_60_lists, "models/top_60_descriptions.joblib")
+joblib.dump(permit_type_lists, "models/permit_types.joblib")
+joblib.dump(work_category_lists, "models/work_categories.joblib")
+print(permit_type_lists["miami"])
+print(work_category_lists["miami"])
 
 # the columns the model learns from, all known on the day someone applies
 features = ["city", "permit_type", "work_category", "cost", "description_words", "common_description"]
