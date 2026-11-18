@@ -1,6 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
-from ml.forecast import forecast
+from ml.forecast import forecast, permit_type_lists
 
 app = FastAPI()
 
@@ -18,4 +18,7 @@ def get_forecast(
     work_category: str | None = None,
     description: str | None = None,
 ):
+    city = city.lower()
+    if city not in permit_type_lists:
+        raise HTTPException(status_code=400, detail=f"Unknown city: {city}")
     return forecast(city, permit_type, work_category, cost, description)
