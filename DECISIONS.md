@@ -244,3 +244,9 @@ Why: I graded 7 versions against the same Aug-Oct test permits tonight. Keeping 
 Every city improved on the practice test too: Austin 20 to 29%, Miami 11 to 18%, Chicago and Orlando 8 to 12%, San Francisco 1 to 4%. Coverage stayed on target (52.0%, 81.1%, 91.3%).
 What it means: the gains hold up on months the decisions never saw, almost to the percent, so they're real and not luck on the test set.
 From now on: new ideas get picked on the practice test, and the real test is only for the final check.
+
+**2026-11-25: Build the common description list and the rare work category rule from training permits only.**
+What I found: `train.py` counted the top 60 descriptions and the work categories under 50 using every permit, test months included, before splitting. So a description that only got popular in September could make the list. That's a small leak: the test months helped decide which categories exist.
+Fix: split first (`is_train`), count on training permits only, then apply the same lists to every permit. A test permit whose description or category isn't on the list becomes OTHER, the same as a new permit on the live site would.
+What changed: almost nothing. 26.16 / 27.90 / 22.02 before, 26.14 / 27.97 / 22.15 after. Still 18%, 24% and 27% better than the baseline. So the leak was real but tiny, and the gains don't come from it.
+Still open: the "permit types under 50 become OTHER" rule in the `clean_permits` view counts all months too (50 rows).

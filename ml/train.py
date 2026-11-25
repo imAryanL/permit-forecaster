@@ -34,14 +34,32 @@ permits = pd.DataFrame(rows, columns=columns)
 permits["issued_date"] = pd.to_datetime(permits["issued_date"])
 permits["applied_date"] = pd.to_datetime(permits["applied_date"])
 
+# split date: learn from permits issued before it, test on the ones after
+cutoff = pd.Timestamp("2026-08-01")
+is_train = permits["issued_date"] < cutoff
+
 # ---- clues, all known on the day someone applies ----
 
 # work category: the kind of work picked on the application
 # (Chicago: express or standard review, Miami: commercial or residential).
-# Same rule as permit types: under 50 permits in a city becomes OTHER.
+# Same rule as permit types: under 50 permits in a city becomes OTHER,
+# counted on training permits only so the test months can't sneak in.
 permits["work_category"] = permits["work_category"].str.strip().replace("", None)
-category_size = permits.groupby(["city", "work_category"])["work_category"].transform("count")
-permits.loc[category_size < 50, "work_category"] = "OTHER"
+
+# 1. count each city's categories, training permits only
+category_counts = permits[is_train].groupby(["city", "work_category"]).size()
+
+# 2. the city + category pairs with 50 or more permits
+common_pairs = category_counts[category_counts >= 50].index
+
+# 3. for every permit: is its pair common? does it have a category at all?
+is_common = permits.set_index(["city", "work_category"]).index.isin(common_pairs)
+has_category = permits["work_category"].notna()
+
+# 4. rare = has a category but it isn't common (~ means "not").
+#    A missing category stays missing, same as before.
+is_rare = has_category & ~is_common
+permits.loc[is_rare, "work_category"] = "OTHER"
 
 # description words: a longer description usually means a bigger job.
 # Orlando has no descriptions, so those stay blank instead of 0.
@@ -50,7 +68,7 @@ permits.loc[permits["description_words"] == 0, "description_words"] = None
 
 # common description: each city's 60 most common descriptions; the rest are OTHER
 permits["common_description"] = permits["description"].str.strip().str.upper()
-top_60 = permits.groupby("city")["common_description"].value_counts().groupby("city").head(60)
+top_60 = permits[is_train].groupby("city")["common_description"].value_counts().groupby("city").head(60)
 # turning the panda table into a plain python dictionary: one list per city to save and look things up
 top_60_lists = {}
 for city, description in top_60.index:
@@ -81,7 +99,6 @@ for column in ["city", "permit_type", "work_category", "common_description"]:
     permits[column] = permits[column].astype("category")
 
 # same split as the baseline, so the scores compare fairly
-cutoff = pd.Timestamp("2026-08-01")
 train = permits[permits["issued_date"] < cutoff]
 test = permits[permits["issued_date"] >= cutoff]
 
